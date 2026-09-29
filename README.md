@@ -170,7 +170,11 @@ PS> uv sync --offline
 | ✅ | 두 스크립트에 **PowerShell 7 전용 문법이 없는 것** 확인 — 윈도우 기본 PowerShell 5.1에서 동작하는 구문만 씀(`??`·`?.`·`&&` 등 미사용) |
 | ✅ | **`.ps1`을 UTF-8 BOM + CRLF로 저장**(2026-09-29 수정) — BOM이 없어 실제로 *"문자열에 종결자 '가 없습니다"* 오류가 났다. 원인은 PowerShell 5.1의 ANSI 해독. `.gitattributes`로 줄바꿈 고정, 스크립트의 `Get-Content`에도 `-Encoding UTF8` 명시 |
 | ✅ | 변환 후 두 파일의 **따옴표 균형 0건 불균형 · 한글 정상 해독** 재확인 |
-| 🔴 | **`download.ps1`·`install.ps1`의 실행 자체는 Windows에서 검증하지 않았다** (작성 환경에 PowerShell 없음). 막히면 위 "손으로 하기"를 쓸 것 — 그쪽 명령은 위 실측에 쓴 것과 같고 **한글이 없어 인코딩과 무관하다** |
+| ✅ | **두 스크립트를 PowerShell 파서에 직접 넣어 구문 오류 0건 확인** — `[Parser]::ParseFile()` (download 840토큰 · install 963토큰) |
+| ✅ | **`download.ps1` 전체 실행 성공** — wheel 18개 · 224.4MB, Windows 태그 정확(`catboost-cp312-win_amd64`·`kiwipiepy-cp39-abi3-win_amd64`·`phik-cp312-win_amd64`), sdist 빌드, 해시 기록, `install.ps1` 동봉, 임시 가상환경 삭제까지 |
+| ✅ | **`install.ps1` 전체 실행 성공** — 무결성 확인(8개 일치) → 백업 생성 → `uv add --offline` 13개 설치 → `import OK` → 회귀 확인. **회귀 실패 분기도 의도대로 동작**(복구 명령 안내) |
+| ✅ | 설치 후 **맨 `uv run`(--no-sync 없이)으로 6종 전부 생존** · `pyproject.toml` 기록 · `.bak` 2개 생성 확인 |
+| 🟡 | 실행 검증은 **macOS의 PowerShell 7**에서 했다(Windows·PowerShell 5.1 아님). `Scripts\python.exe` 경로만 macOS용으로 바꿔 돌렸고 나머지는 그대로다. **5.1 고유 동작**(ANSI 해독·네이티브 인자 인용부호·stderr 처리)은 이미 그 특성에 맞춰 고쳐 두었다 |
 
 ## 새 패키지를 추가할 때
 
