@@ -10,12 +10,21 @@
 
 ```powershell
 # ── 인터넷 있는 Windows 머신
-PS> git clone https://github.com/<you>/offline-wheelhouse.git
+PS> git clone https://github.com/toina-55/offline-wheelhouse.git
 PS> cd offline-wheelhouse
-PS> .\download.ps1                      # → .\wheelhouse\  (wheel + hashes.csv)
+PS> .\download.ps1          # → .\wheelhouse\  (wheel + hashes.csv + install.ps1)
 
 # ── wheelhouse 폴더를 옮긴 뒤, 인터넷 없는 Windows 머신
-PS> .\install.ps1 -Wheelhouse C:\transfer\wheelhouse
+PS> cd C:\transfer\wheelhouse
+PS> .\install.ps1           # 인자 없이 — 자기가 있는 폴더를 wheelhouse로 본다
+```
+
+**`download.ps1`이 `install.ps1`·`packages.txt`·`verify-imports.txt`를 `wheelhouse\` 안에 함께 담는다** — 폐쇄망에서는 clone을 못 하므로 그 폴더만 있으면 설치가 된다.
+
+설치 대상 경로가 다르면:
+
+```powershell
+PS> .\install.ps1 -EnvPath D:\somewhere\envs\main
 ```
 
 `PowerShell 실행 정책`에 막히면:
@@ -121,6 +130,7 @@ PS> uv sync --offline
 | ✅ | `kiwipiepy`가 `cp39-abi3` wheel이라 `--abi cp312`로도 받아지는 것 실측 확인 |
 | ✅ | `kiwipiepy_model`이 `--only-binary=:all:`에서 실패하는 것, `pip wheel`로 `py3-none-any` wheel(88MB)이 만들어지는 것 실측 확인 |
 | ✅ | **의존성 완전성 확인** — 받은 wheel 10종의 `Requires-Dist`를 대상 `uv.lock`과 교차 대조해 **빠진 필수 의존성 0건** |
+| ✅ | 두 스크립트에 **PowerShell 7 전용 문법이 없는 것** 확인 — 윈도우 기본 PowerShell 5.1에서 동작하는 구문만 씀(`??`·`?.`·`&&` 등 미사용) |
 | 🔴 | **`download.ps1`·`install.ps1`은 Windows에서 실행 검증하지 않았다** (작성 환경에 PowerShell 없음). 막히면 위 "손으로 하기"를 쓸 것 — 그쪽 명령은 위 실측에 쓴 것과 같다 |
 
 ## 새 패키지를 추가할 때

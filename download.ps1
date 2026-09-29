@@ -102,8 +102,12 @@ try {
         Sort-Object Name |
         Export-Csv (Join-Path $OutDir 'hashes.csv') -NoTypeInformation -Encoding UTF8
 
-    Copy-Item (Join-Path $PSScriptRoot 'verify-imports.txt') $OutDir -Force
-    Copy-Item (Join-Path $PSScriptRoot 'packages.txt')       $OutDir -Force
+    # 폐쇄망에서는 clone을 못 하므로, 설치에 필요한 것을 wheelhouse 안에 함께 담는다
+    Step '설치 스크립트·목록 동봉'
+    foreach ($f in @('install.ps1', 'packages.txt', 'verify-imports.txt')) {
+        Copy-Item (Join-Path $PSScriptRoot $f) $OutDir -Force
+        Note $f
+    }
 
     Step '결과'
     $sum = ($whl | Measure-Object Length -Sum).Sum / 1MB
@@ -113,8 +117,11 @@ try {
     }
 
     Write-Host ""
-    Write-Host "다음: 아래 폴더 전체를 폐쇄망 노트북으로 옮긴 뒤 install.ps1 을 실행한다." -ForegroundColor Yellow
+    Write-Host "다음: 아래 폴더 전체를 폐쇄망 노트북으로 옮긴다 (install.ps1 이 안에 들어 있다)." -ForegroundColor Yellow
     Write-Host "  $OutDir"
+    Write-Host ""
+    Write-Host "  옮긴 뒤 그 폴더에서:" -ForegroundColor Yellow
+    Write-Host "    .\install.ps1"
 }
 finally {
     if (-not $KeepVenv) {

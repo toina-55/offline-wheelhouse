@@ -8,13 +8,17 @@
   실패하면 백업(.bak)으로 자동 복구한다.
 
 .EXAMPLE
+  # wheelhouse 폴더 안에서 (download.ps1 이 이 스크립트를 거기 복사해 둔다)
+  .\install.ps1
+
+.EXAMPLE
   .\install.ps1 -Wheelhouse C:\transfer\wheelhouse
   .\install.ps1 -Wheelhouse C:\transfer\wheelhouse -EnvPath $HOME\code\local-llm-setup\envs\main
 #>
 [CmdletBinding()]
 param(
-    # 옮겨온 wheelhouse 폴더
-    [Parameter(Mandatory = $true)][string]$Wheelhouse,
+    # 옮겨온 wheelhouse 폴더. 생략하면 이 스크립트가 있는 폴더를 쓴다
+    [string]$Wheelhouse = $PSScriptRoot,
     # 설치 대상 uv 프로젝트 (pyproject.toml 이 있는 폴더)
     [string]$EnvPath = "$HOME\code\local-llm-setup\envs\main",
     # 해시 확인을 건너뛴다 (권장하지 않음)
@@ -35,7 +39,10 @@ function Read-List([string]$path) {
 
 # ---------------------------------------------------------------- 0. 사전 확인
 Step '사전 확인'
+if (-not $Wheelhouse) { throw "wheelhouse 경로를 알 수 없다. -Wheelhouse 로 지정할 것" }
 if (-not (Test-Path $Wheelhouse)) { throw "wheelhouse 폴더가 없다: $Wheelhouse" }
+$Wheelhouse = (Resolve-Path $Wheelhouse).Path
+Note "wheelhouse: $Wheelhouse"
 if (-not (Test-Path (Join-Path $EnvPath 'pyproject.toml'))) {
     throw "pyproject.toml 이 없다: $EnvPath  (-EnvPath 로 올바른 경로를 지정할 것)"
 }
