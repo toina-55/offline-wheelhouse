@@ -63,18 +63,17 @@ PS> [System.IO.File]::WriteAllText("$PWD\download.ps1", $t, (New-Object System.T
 | `sdist-only.txt` | PyPI에 wheel이 없어 **온라인에서 `pip wheel`로 빌드**해야 하는 것 |
 | `verify-imports.txt` | 설치 후 import 확인용 모듈명(pip 이름과 다른 것이 있다) |
 
-현재 목록(2026-09-29 기준, wheel 19개 · 합계 약 **229MB**):
+현재 목록(2026-09-29 기준, wheel 18개 · 합계 약 **229MB**):
 
 | wheel | 구분 | 크기 |
 | --- | --- | --- |
 | `catboost` | 목표 — 순서형 타깃 통계(타깃 인코딩 누수 대조군) | 95.6MB |
-| `interpret` | 목표 — EBM glass-box 모델 | 0.01MB |
+| **`interpret-core`** | 목표 — EBM glass-box 모델. 🔴 메타패키지 `interpret` 이 아니다(그쪽은 dash·flask·gevent·aplr·SALib 를 끌고 온다). 네이티브 라이브러리를 플랫폼별로 wheel 안에 담고 있다(`libebm_win_x64.dll` 확인) | 14.9MB |
 | `imodels` | 목표 — 규칙 학습(RuleFit 등) | 0.33MB |
 | `sweetviz` | 목표 — EDA 리포트, `compare(train, test)` | 14.4MB |
 | `kiwipiepy` | 목표 — 한국어 형태소 (cp39-abi3, Python 3.9+ 공용) | 3.7MB |
 | `phik` | 목표 — 혼합형 변수 상관 | 0.6MB |
 | `category-encoders` · `xlrd` · `umap-learn` · `crepes` · `metric-learn` · `tabulate` | 목표 | 각 0.1MB 미만 |
-| **`interpret-core`** | interpret 의존 — EBM 본체. **네이티브 라이브러리를 플랫폼별로 wheel 안에 담고 있다**(`libebm_win_x64.dll` 확인) | 14.9MB |
 | `plotly` | catboost 의존 | 9.2MB |
 | `mlxtend` | imodels 의존 | 1.3MB |
 | `graphviz` · `pynndescent` · `importlib-resources` | catboost · umap-learn · sweetviz 의존 | 각 0.1MB 미만 |
@@ -82,7 +81,7 @@ PS> [System.IO.File]::WriteAllText("$PWD\download.ps1", $t, (New-Object System.T
 
 > `tabulate`는 용량이 0.04MB인데 없으면 **`df.to_markdown()` 자체가 동작하지 않는다.** 분석 결과를 마크다운 표로 옮길 일이 있으면 필수.
 
-## 🔴 알아둘 것 넷
+## 🔴 알아둘 것 다섯
 
 **1. Python 버전·플랫폼이 정확히 맞아야 한다.** wheel은 `cp312`·`win_amd64` 같은 태그로 묶여 있다. 기본값은 **Python 3.12 / 64비트 Windows**이고, 대상이 다르면 바꿔서 받는다.
 
@@ -96,7 +95,11 @@ PS> .\download.ps1 -PyVersion 311 -OutDir D:\wheelhouse-311
 
 **3. sdist만 있는 패키지는 미리 wheel로 만든다.** `pip download --only-binary=:all:`은 sdist를 거부하고, `--platform`을 쓰면 `--only-binary`가 강제된다. 그래서 `sdist-only.txt`의 것은 `pip wheel`로 빌드한다. **순수 Python·데이터 패키지만** 이렇게 할 수 있다 — C 확장이 있으면 빌드 결과가 빌드한 OS에 묶이므로 Windows에서 빌드해야 한다.
 
-**4. `uv pip install`이 아니라 `uv add`를 쓴다.** `uv run`은 실행 전에 환경을 `uv.lock`에 맞춰 자동 동기화하면서 **lock에 없는 패키지를 지운다.** `uv pip install`로 넣으면 다음 `uv run`에서 조용히 사라진다. `uv add`는 `pyproject.toml`·`uv.lock`·설치를 함께 처리해 살아남는다.
+**4. `uv pip install`이 아니라 `uv add`를 쓴다.** `uv run`은 실행 전에 환경을 `uv.lock`에 맞춰 자동 동기화하면서 **lock에 없는 패키지를 지운다.** `uv pip install`로 넣으면 다음 `uv run`에서 조용히 사라진다(실측 확인). `uv add`는 `pyproject.toml`·`uv.lock`·설치를 함께 처리해 살아남는다.
+
+> 🔴 **단 `uv add --offline`은 프로젝트 전체를 다시 해석한다.** 새 패키지는 `--find-links`에서, **기존 패키지는 uv 캐시에서** 가져오는데, 캐시에 없는 버전이 하나라도 있으면 거기서 멈춘다(실측: 캐시에 없는 `scipy`에서 실패). 그래서 **대상 머신의 uv 캐시를 지우지 않는 것이 전제**다.
+
+**5. 메타패키지에 `extras`가 걸려 있는지 본다.** `Requires-Dist`에 `pkg[extra1,extra2]==x.y` 형태가 있으면, 그 extras의 의존성까지 전부 딸려온다. 실제로 `interpret`(메타)가 `interpret-core[aplr,dash,debug,notebook,plotly,sensitivity,shap]`을 요구해 **dash·dash-cytoscape·flask·gevent·aplr·SALib**를 끌고 오려 했다. 그래서 이 저장소는 **`interpret-core`를 직접** 쓴다 — EBM은 core만으로 동작한다(실측 확인).
 
 ## 스크립트 없이 손으로 하기
 
@@ -109,8 +112,8 @@ PS> .\.venv-dl\Scripts\python.exe -m pip install --upgrade pip
 
 PS> .\.venv-dl\Scripts\python.exe -m pip download `
       catboost category-encoders xlrd phik kiwipiepy umap-learn `
-      crepes metric-learn tabulate interpret imodels sweetviz `
-      plotly graphviz pynndescent interpret-core mlxtend importlib-resources `
+      crepes metric-learn tabulate interpret-core imodels sweetviz `
+      plotly graphviz pynndescent mlxtend importlib-resources `
       -d wheelhouse --no-deps --only-binary=:all: `
       --platform win_amd64 --python-version 312 --implementation cp --abi cp312
 
@@ -130,7 +133,7 @@ PS> cd $HOME\code\local-llm-setup\envs\main
 PS> Copy-Item pyproject.toml pyproject.toml.bak; Copy-Item uv.lock uv.lock.bak
 PS> uv add --offline --find-links C:\transfer\wheelhouse `
       catboost category-encoders xlrd phik kiwipiepy umap-learn `
-      crepes metric-learn tabulate interpret imodels sweetviz
+      crepes metric-learn tabulate interpret-core imodels sweetviz
 PS> uv run python -c "import catboost, category_encoders, xlrd, phik, kiwipiepy, umap, crepes, metric_learn, tabulate, interpret, imodels, sweetviz; print('OK')"
 PS> uv run python -c "import torch, numpy, sklearn; print('base OK', torch.cuda.is_available())"
 ```
@@ -140,7 +143,7 @@ PS> uv run python -c "import torch, numpy, sklearn; print('base OK', torch.cuda.
 ```powershell
 PS> uv pip install --no-index --find-links C:\transfer\wheelhouse `
       catboost category-encoders xlrd phik kiwipiepy umap-learn `
-      crepes metric-learn tabulate interpret imodels sweetviz
+      crepes metric-learn tabulate interpret-core imodels sweetviz
 PS> uv run --no-sync python -c "import catboost; print('OK')"
 ```
 
@@ -160,7 +163,10 @@ PS> uv sync --offline
 | ✅ | `kiwipiepy`가 `cp39-abi3` wheel이라 `--abi cp312`로도 받아지는 것 실측 확인 |
 | ✅ | `kiwipiepy_model`이 `--only-binary=:all:`에서 실패하는 것, `pip wheel`로 `py3-none-any` wheel(88MB)이 만들어지는 것 실측 확인 |
 | ✅ | **`interpret-core`의 순수 Python wheel 안에 `libebm_win_x64.dll`(1.49MB)이 들어 있는 것 확인** — EBM 네이티브 부스터가 Windows에서 동작한다 |
-| ✅ | **의존성 완전성 확인** — wheel **19종 전부**의 `Requires-Dist`를 대상 `uv.lock`과 교차 대조해 **빠진 필수 의존성 0건** |
+| ✅ | **의존성 완전성 확인** — wheel **18종 전부**의 `Requires-Dist`를 대상 `uv.lock`과 교차 대조해 **빠진 필수 의존성 0건 · extras 요구 0건** |
+| ✅ | **`uv add --offline --find-links` 를 실제로 실행해 확인** — 대상과 같은 기반 패키지를 깐 임시 프로젝트에서 설치 성공. **그 뒤 `--no-sync` 없는 맨 `uv run` 으로도 패키지가 살아남는 것**까지 확인(§알아둘 것 4의 근거) |
+| ✅ | **`interpret-core` 만으로 EBM 학습·형태 함수 추출 성공** 실측 — 메타패키지 `interpret` 불필요 |
+| 🔴 | **`uv add --offline` 은 프로젝트 전체를 다시 해석한다** — 기존 패키지 wheel이 **uv 캐시에 없으면 실패**한다(실측: 캐시에 없는 `scipy`에서 멈춤). `local-llm-setup` GUIDE §12의 *"uv 캐시는 지우지 않는다"*가 여기서 값을 한다 |
 | ✅ | 두 스크립트에 **PowerShell 7 전용 문법이 없는 것** 확인 — 윈도우 기본 PowerShell 5.1에서 동작하는 구문만 씀(`??`·`?.`·`&&` 등 미사용) |
 | ✅ | **`.ps1`을 UTF-8 BOM + CRLF로 저장**(2026-09-29 수정) — BOM이 없어 실제로 *"문자열에 종결자 '가 없습니다"* 오류가 났다. 원인은 PowerShell 5.1의 ANSI 해독. `.gitattributes`로 줄바꿈 고정, 스크립트의 `Get-Content`에도 `-Encoding UTF8` 명시 |
 | ✅ | 변환 후 두 파일의 **따옴표 균형 0건 불균형 · 한글 정상 해독** 재확인 |
@@ -175,3 +181,4 @@ PS> uv sync --offline
 2. 없는 의존성만 `extra-deps.txt`에 추가
 3. PyPI에 wheel이 없으면 `sdist-only.txt`로
 4. import 이름이 다르면 `verify-imports.txt`에 반영
+5. 🔴 `Requires-Dist` 에 `pkg[extras]` 형태가 없는지 확인 — 있으면 extras 의존성까지 전부 따라온다
