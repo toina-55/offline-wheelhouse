@@ -44,17 +44,24 @@ PS> powershell -ExecutionPolicy Bypass -File .\download.ps1
 | `sdist-only.txt` | PyPI에 wheel이 없어 **온라인에서 `pip wheel`로 빌드**해야 하는 것 |
 | `verify-imports.txt` | 설치 후 import 확인용 모듈명(pip 이름과 다른 것이 있다) |
 
-현재 목록(2026-09-29 기준, 합계 약 **195MB**):
+현재 목록(2026-09-29 기준, wheel 19개 · 합계 약 **229MB**):
 
 | wheel | 구분 | 크기 |
 | --- | --- | --- |
-| `catboost` | 목표 | 95.6MB |
-| `kiwipiepy` | 목표 (cp39-abi3 — Python 3.9+ 공용) | 3.7MB |
-| `phik` | 목표 | 0.6MB |
-| `category-encoders` · `xlrd` · `umap-learn` · `crepes` · `metric-learn` | 목표 | 각 0.1MB 미만 |
+| `catboost` | 목표 — 순서형 타깃 통계(타깃 인코딩 누수 대조군) | 95.6MB |
+| `interpret` | 목표 — EBM glass-box 모델 | 0.01MB |
+| `imodels` | 목표 — 규칙 학습(RuleFit 등) | 0.33MB |
+| `sweetviz` | 목표 — EDA 리포트, `compare(train, test)` | 14.4MB |
+| `kiwipiepy` | 목표 — 한국어 형태소 (cp39-abi3, Python 3.9+ 공용) | 3.7MB |
+| `phik` | 목표 — 혼합형 변수 상관 | 0.6MB |
+| `category-encoders` · `xlrd` · `umap-learn` · `crepes` · `metric-learn` · `tabulate` | 목표 | 각 0.1MB 미만 |
+| **`interpret-core`** | interpret 의존 — EBM 본체. **네이티브 라이브러리를 플랫폼별로 wheel 안에 담고 있다**(`libebm_win_x64.dll` 확인) | 14.9MB |
 | `plotly` | catboost 의존 | 9.2MB |
-| `graphviz` · `pynndescent` | 각각 catboost · umap-learn 의존 | 0.1MB 미만 |
+| `mlxtend` | imodels 의존 | 1.3MB |
+| `graphviz` · `pynndescent` · `importlib-resources` | catboost · umap-learn · sweetviz 의존 | 각 0.1MB 미만 |
 | **`kiwipiepy_model`** | kiwipiepy 의존 · **sdist만 있어 빌드 필요** | **88MB** |
+
+> `tabulate`는 용량이 0.04MB인데 없으면 **`df.to_markdown()` 자체가 동작하지 않는다.** 분석 결과를 마크다운 표로 옮길 일이 있으면 필수.
 
 ## 🔴 알아둘 것 넷
 
@@ -83,7 +90,8 @@ PS> .\.venv-dl\Scripts\python.exe -m pip install --upgrade pip
 
 PS> .\.venv-dl\Scripts\python.exe -m pip download `
       catboost category-encoders xlrd phik kiwipiepy umap-learn `
-      plotly graphviz pynndescent `
+      crepes metric-learn tabulate interpret imodels sweetviz `
+      plotly graphviz pynndescent interpret-core mlxtend importlib-resources `
       -d wheelhouse --no-deps --only-binary=:all: `
       --platform win_amd64 --python-version 312 --implementation cp --abi cp312
 
@@ -102,15 +110,18 @@ PS> Compare-Object (Import-Csv hashes.csv).Hash (Import-Csv after.csv).Hash   # 
 PS> cd $HOME\code\local-llm-setup\envs\main
 PS> Copy-Item pyproject.toml pyproject.toml.bak; Copy-Item uv.lock uv.lock.bak
 PS> uv add --offline --find-links C:\transfer\wheelhouse `
-      catboost category-encoders xlrd phik kiwipiepy umap-learn
-PS> uv run python -c "import catboost, category_encoders, xlrd, phik, kiwipiepy, umap; print('OK')"
+      catboost category-encoders xlrd phik kiwipiepy umap-learn `
+      crepes metric-learn tabulate interpret imodels sweetviz
+PS> uv run python -c "import catboost, category_encoders, xlrd, phik, kiwipiepy, umap, crepes, metric_learn, tabulate, interpret, imodels, sweetviz; print('OK')"
 PS> uv run python -c "import torch, numpy, sklearn; print('base OK', torch.cuda.is_available())"
 ```
 
 `uv add`가 실패하면 임시 우회(다음 `uv run`에서 지워지므로 임시용):
 
 ```powershell
-PS> uv pip install --no-index --find-links C:\transfer\wheelhouse catboost category-encoders xlrd phik kiwipiepy umap-learn
+PS> uv pip install --no-index --find-links C:\transfer\wheelhouse `
+      catboost category-encoders xlrd phik kiwipiepy umap-learn `
+      crepes metric-learn tabulate interpret imodels sweetviz
 PS> uv run --no-sync python -c "import catboost; print('OK')"
 ```
 
@@ -126,10 +137,11 @@ PS> uv sync --offline
 
 | | |
 | --- | --- |
-| ✅ | **`pip download` 명령 실측 통과** (2026-09-29) — 9종이 정확한 태그로 받아짐: `catboost-1.2.10-cp312-cp312-win_amd64` · `phik-0.12.5-cp312-cp312-win_amd64` · `kiwipiepy-0.24.0-cp39-abi3-win_amd64` · 나머지 순수 Python. 합계 109MB |
+| ✅ | **`pip download` 명령 실측 통과** (2026-09-29) — **18종이 정확한 태그로 받아짐**(141MB): `catboost-1.2.10-cp312-cp312-win_amd64` · `phik-0.12.5-cp312-cp312-win_amd64` · `kiwipiepy-0.24.0-cp39-abi3-win_amd64` · 나머지 순수 Python |
 | ✅ | `kiwipiepy`가 `cp39-abi3` wheel이라 `--abi cp312`로도 받아지는 것 실측 확인 |
 | ✅ | `kiwipiepy_model`이 `--only-binary=:all:`에서 실패하는 것, `pip wheel`로 `py3-none-any` wheel(88MB)이 만들어지는 것 실측 확인 |
-| ✅ | **의존성 완전성 확인** — 받은 wheel 10종의 `Requires-Dist`를 대상 `uv.lock`과 교차 대조해 **빠진 필수 의존성 0건** |
+| ✅ | **`interpret-core`의 순수 Python wheel 안에 `libebm_win_x64.dll`(1.49MB)이 들어 있는 것 확인** — EBM 네이티브 부스터가 Windows에서 동작한다 |
+| ✅ | **의존성 완전성 확인** — wheel **19종 전부**의 `Requires-Dist`를 대상 `uv.lock`과 교차 대조해 **빠진 필수 의존성 0건** |
 | ✅ | 두 스크립트에 **PowerShell 7 전용 문법이 없는 것** 확인 — 윈도우 기본 PowerShell 5.1에서 동작하는 구문만 씀(`??`·`?.`·`&&` 등 미사용) |
 | 🔴 | **`download.ps1`·`install.ps1`은 Windows에서 실행 검증하지 않았다** (작성 환경에 PowerShell 없음). 막히면 위 "손으로 하기"를 쓸 것 — 그쪽 명령은 위 실측에 쓴 것과 같다 |
 

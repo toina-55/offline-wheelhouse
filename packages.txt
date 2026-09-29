@@ -9,3 +9,7 @@ kiwipiepy
 umap-learn
 crepes              # conformal 예측 — "이웃이 갈리면 검토 필요"를 보정된 커버리지로
 metric-learn        # LMNN·ITML·LFDA. sklearn NCA로 안 되는 것만
+tabulate            # df.to_markdown() 이 이걸 요구한다. 없으면 안 됨
+interpret           # EBM — glass-box 모델, 피처별 형태 함수를 직접 본다
+imodels             # 규칙 학습(RuleFit 등) — 사람이 읽는 규칙이 결과로 나온다
+sweetviz            # EDA 리포트. compare(train, test) 로 분할 편향을 한 장으로

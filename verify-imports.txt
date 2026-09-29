@@ -9,3 +9,7 @@ kiwipiepy
 umap
 crepes
 metric_learn
+tabulate
+interpret
+imodels
+sweetviz
