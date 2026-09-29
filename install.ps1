@@ -3,9 +3,9 @@
   옮겨온 wheelhouse를 폐쇄망 uv 프로젝트에 설치한다.
 
 .DESCRIPTION
-  `uv add --offline --find-links` 를 쓴다 — pyproject.toml·uv.lock·설치를 한 번에 처리해야
-  이후 `uv run` 의 자동 동기화에서 지워지지 않는다.
-  실패하면 백업(.bak)으로 자동 복구한다.
+  기존 main/tabular는 `uv add --offline --find-links`로 추가한다.
+  automl312는 별도 Python 3.12 프로젝트를 만들고 wheelhouse만으로 동기화한다.
+  기존 프로젝트에 대한 변경은 실패 시 백업(.bak)으로 복구한다.
 
 .EXAMPLE
   # wheelhouse 폴더 안에서 (download.ps1 이 이 스크립트를 거기 복사해 둔다)
@@ -39,7 +39,6 @@ $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir)  { $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $ScriptDir)  { $ScriptDir  = (Get-Location).Path }
 if (-not $Wheelhouse) { $Wheelhouse = $ScriptDir }
-if (-not $EnvPath)    { $EnvPath    = Join-Path $HOME 'code\local-llm-setup\envs\main' }
 
 # 복구용 상태
 $script:pyproj = $null
@@ -79,10 +78,35 @@ if (-not (Test-Path $Wheelhouse)) { Die "wheelhouse 폴더가 없다: $Wheelhous
 $Wheelhouse = (Resolve-Path $Wheelhouse).Path
 Note "wheelhouse : $Wheelhouse"
 
-if (-not (Test-Path (Join-Path $EnvPath 'pyproject.toml'))) {
-    Die "pyproject.toml 이 없다: $EnvPath`n       -EnvPath 로 올바른 경로를 지정할 것"
+$profileFile = Join-Path $Wheelhouse 'profile.txt'
+$Profile = 'main'  # 이전 버전의 wheelhouse는 main으로 취급
+if (Test-Path $profileFile) { $Profile = (Get-Content $profileFile -Encoding ASCII | Select-Object -First 1).Trim() }
+if ($Profile -notin @('main', 'tabular', 'automl312')) {
+    Die "알 수 없는 프로필: $Profile"
 }
-$EnvPath = (Resolve-Path $EnvPath).Path
+if (-not $EnvPath) { $EnvPath = Join-Path $HOME "code\local-llm-setup\envs\$Profile" }
+if ($Profile -ne 'automl312') {
+    $projectFile = Join-Path $EnvPath 'pyproject.toml'
+    if (-not (Test-Path $projectFile)) {
+        Die "pyproject.toml 이 없다: $EnvPath`n       -EnvPath 로 올바른 경로를 지정할 것"
+    }
+    if (-not (Select-String -Path $projectFile -Pattern ('^name\s*=\s*"field-' + $Profile + '"') -Quiet)) {
+        Die "$Profile 프로필과 설치 대상 프로젝트 이름이 다르다: $projectFile"
+    }
+    $EnvPath = (Resolve-Path $EnvPath).Path
+} else {
+    $template = Join-Path $Wheelhouse 'pyproject.toml'
+    if (-not (Test-Path $template)) { Die 'automl312 프로젝트 템플릿이 없다' }
+    $parent = Split-Path $EnvPath -Parent
+    if (-not (Test-Path $parent)) { Die "envs 폴더가 없다: $parent" }
+    $existing = Join-Path $EnvPath 'pyproject.toml'
+    if (Test-Path $existing) {
+        if ((Get-FileHash $template -Algorithm SHA256).Hash -ne (Get-FileHash $existing -Algorithm SHA256).Hash) {
+            Die "기존 automl312 프로젝트 설정이 다르다: $existing"
+        }
+    }
+}
+Note "프로필      : $Profile"
 Note "설치 대상   : $EnvPath"
 
 if (-not (Get-Command uv -CommandType Application -ErrorAction SilentlyContinue)) {
@@ -111,6 +135,11 @@ if ($SkipHashCheck) {
         if (-not $a)                 { $bad += "$($e.Name) : 파일 없음" }
         elseif ($a.Hash -ne $e.Hash) { $bad += "$($e.Name) : 해시 불일치" }
     }
+    foreach ($a in $actual) {
+        if (-not ($expected | Where-Object { $_.Name -eq $a.Name })) {
+            $bad += "$($a.Name) : 해시 목록에 없는 wheel"
+        }
+    }
     if ($bad.Count -gt 0) {
         $bad | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
         Die '무결성 확인 실패 — 다시 복사할 것'
@@ -118,22 +147,32 @@ if ($SkipHashCheck) {
     Note "$($expected.Count)개 모두 일치"
 }
 
-# ---------------------------------------------------------------- 2. 백업
-Step '백업'
-$script:pyproj = Join-Path $EnvPath 'pyproject.toml'
-$script:lock   = Join-Path $EnvPath 'uv.lock'
-Copy-Item $script:pyproj "$($script:pyproj).bak" -Force
-if (-not (Test-Path "$($script:pyproj).bak")) {
-    $script:pyproj = $null          # 백업이 없으면 복구도 시도하지 않는다
-    Die '백업을 만들지 못했다 — 쓰기 권한을 확인할 것'
-}
-Note "$($script:pyproj).bak"
-if (Test-Path $script:lock) {
-    Copy-Item $script:lock "$($script:lock).bak" -Force
-    Note "$($script:lock).bak"
+# ---------------------------------------------------------------- 2. 백업 또는 독립 프로젝트 생성
+if ($Profile -eq 'automl312') {
+    Step '독립 프로젝트 준비'
+    if (-not (Test-Path $EnvPath)) { New-Item -ItemType Directory -Path $EnvPath -Force | Out-Null }
+    if (-not (Test-Path $EnvPath)) { Die "프로젝트 폴더를 만들지 못했다: $EnvPath" }
+    $newProject = Join-Path $EnvPath 'pyproject.toml'
+    if (-not (Test-Path $newProject)) { Copy-Item $template $newProject -Force }
+    if (-not (Test-Path $newProject)) { Die "프로젝트 설정을 복사하지 못했다: $newProject" }
+    $EnvPath = (Resolve-Path $EnvPath).Path
 } else {
-    $script:lock = $null
-    Warn 'uv.lock 이 없다 (첫 동기화 전 상태로 보인다)'
+    Step '백업'
+    $script:pyproj = Join-Path $EnvPath 'pyproject.toml'
+    $script:lock   = Join-Path $EnvPath 'uv.lock'
+    Copy-Item $script:pyproj "$($script:pyproj).bak" -Force
+    if (-not (Test-Path "$($script:pyproj).bak")) {
+        $script:pyproj = $null
+        Die '백업을 만들지 못했다 — 쓰기 권한을 확인할 것'
+    }
+    Note "$($script:pyproj).bak"
+    if (Test-Path $script:lock) {
+        Copy-Item $script:lock "$($script:lock).bak" -Force
+        Note "$($script:lock).bak"
+    } else {
+        $script:lock = $null
+        Warn 'uv.lock 이 없다 (첫 동기화 전 상태로 보인다)'
+    }
 }
 
 # ---------------------------------------------------------------- 3. 설치
@@ -146,10 +185,22 @@ Push-Location $EnvPath
 if ((Get-Location).Path -ne $EnvPath) { Die "작업 폴더를 옮기지 못했다: $EnvPath" }
 $script:pushed = $true
 
-Step "uv add --offline ($($targets -join ', '))"
-Note '전이 의존성은 --find-links 에서 자동으로 끌어간다'
-& uv add --offline --find-links $Wheelhouse @targets
-if ($LASTEXITCODE -ne 0) { Die "uv add 실패 (종료코드 $LASTEXITCODE)" }
+if ($Profile -eq 'automl312') {
+    Step 'uv sync --offline (독립 Python 3.12 환경)'
+    Note '모든 의존성을 wheelhouse에서만 해석·설치한다'
+    & uv sync --offline --no-index --find-links $Wheelhouse
+    if ($LASTEXITCODE -ne 0) { Die "uv sync 실패 (종료코드 $LASTEXITCODE)" }
+} else {
+    Step "uv add --offline ($($targets -join ', '))"
+    Note '전이 의존성은 --find-links 에서 자동으로 끌어간다'
+    $constraints = Join-Path $Wheelhouse 'constraints.txt'
+    if (Test-Path $constraints) {
+        & uv add --offline --find-links $Wheelhouse --constraints $constraints @targets
+    } else {
+        & uv add --offline --find-links $Wheelhouse @targets
+    }
+    if ($LASTEXITCODE -ne 0) { Die "uv add 실패 (종료코드 $LASTEXITCODE)" }
+}
 
 # ---------------------------------------------------------------- 4. import 확인
 Step 'import 확인'
@@ -159,29 +210,39 @@ $mods = @(Read-List $impFile)
 # 🔴 파이썬 코드에 이중인용부호를 쓰지 않는다 — PowerShell 5.1 이 네이티브 명령에
 #    인자를 넘길 때 안쪽 " 를 잃어버려 SyntaxError 가 난다
 $code = 'import ' + ($mods -join ', ') + "; print('import OK')"
-& uv run python -c $code
+& uv run --offline python -c $code
 if ($LASTEXITCODE -ne 0) { Die 'import 실패' }
 
 # ---------------------------------------------------------------- 5. 회귀 확인
-Step '회귀 확인 (lock 재해석으로 기존 패키지가 밀리지 않았는지)'
-Note '여기서 실패하면 설치는 끝났지만 기존 환경이 흔들렸다는 뜻이다'
-& uv run python -c "import numpy, pandas, sklearn; print('base OK', numpy.__version__, sklearn.__version__)"
+Step '환경 확인'
+& uv run --offline python -c "import numpy, pandas, sklearn; print('base OK', numpy.__version__, sklearn.__version__)"
 $baseOk = ($LASTEXITCODE -eq 0)
-& uv run python -c "import torch; print('torch OK', torch.__version__, torch.cuda.is_available())"
-$torchOk = ($LASTEXITCODE -eq 0)
+$specialOk = $false
+if ($Profile -eq 'automl312') {
+    & uv run --offline python -c "from pycaret.tasks import ClassificationExperiment; print('PyCaret 4 API OK')"
+    $specialOk = ($LASTEXITCODE -eq 0)
+} else {
+    & uv run --offline python -c "import torch; print('torch OK', torch.__version__, torch.cuda.is_available())"
+    $specialOk = ($LASTEXITCODE -eq 0)
+}
 
 Pop-Location -ErrorAction SilentlyContinue
 $script:pushed = $false
 
 Step '결과'
-if ($baseOk -and $torchOk) {
-    Write-Host '  설치 성공 · 기존 환경 정상. 백업은 그대로 남겨 두었다 (.bak)' -ForegroundColor Green
+if ($baseOk -and $specialOk) {
+    if ($Profile -eq 'automl312') {
+        Write-Host '  독립 PyCaret 4 환경 설치 성공' -ForegroundColor Green
+    } else {
+        Write-Host '  설치 성공 · 기존 환경 정상. 백업은 그대로 남겨 두었다 (.bak)' -ForegroundColor Green
+    }
 } else {
-    Write-Host '  설치는 됐지만 기존 패키지 확인에서 실패했다.' -ForegroundColor Yellow
-    Write-Host '  되돌리려면:' -ForegroundColor Yellow
-    Write-Host "    Copy-Item `"$($script:pyproj).bak`" `"$($script:pyproj)`" -Force"
-    if ($script:lock) { Write-Host "    Copy-Item `"$($script:lock).bak`" `"$($script:lock)`" -Force" }
-    Write-Host '    uv sync --offline'
+    Write-Host '  설치는 됐지만 환경 확인에서 실패했다.' -ForegroundColor Yellow
+    if ($script:pyproj) {
+        Write-Host '  되돌리려면:' -ForegroundColor Yellow
+        Write-Host "    Copy-Item `"$($script:pyproj).bak`" `"$($script:pyproj)`" -Force"
+        if ($script:lock) { Write-Host "    Copy-Item `"$($script:lock).bak`" `"$($script:lock)`" -Force" }
+        Write-Host '    uv sync --offline'
+    }
+    exit 1
 }
-Write-Host '  기존 노트북이 더 의심되면 cookbook 03 노트북을 재실행해 볼 것:'
-Write-Host '    uv run jupyter nbconvert --to notebook --execute --output-dir $env:TEMP ..\..\cookbook\03-ml-supervised-unsupervised.ipynb'

@@ -1,0 +1,5 @@
+# envs/tabular (Python 3.12). 트리 모델을 같은 커널에서 비교한다.
+catboost==1.2.10
+tabulate==0.10.0
+lightgbm==4.7.0
+xgboost==3.4.1

@@ -1,0 +1,9 @@
+pycaret
+catboost
+xgboost
+lightgbm
+optuna
+optuna_integration
+tabulate
+ipykernel
+nbconvert

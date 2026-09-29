@@ -11,14 +11,18 @@
 
 .EXAMPLE
   .\download.ps1
-  .\download.ps1 -PyVersion 311 -OutDir D:\wheelhouse-automl
+  .\download.ps1 -Profile tabular
+  .\download.ps1 -Profile automl312
 #>
 [CmdletBinding()]
 param(
-    # 결과 wheel을 모을 폴더. 생략하면 <스크립트 폴더>\wheelhouse
+    # 결과 wheel을 모을 폴더. 생략하면 프로필별 wheelhouse 폴더
     [string]$OutDir    = '',
-    # 대상 환경의 Python 버전. envs\main = 312, envs\automl = 311
-    [string]$PyVersion = '312',
+    # 대상 설치 프로필
+    [ValidateSet('main', 'tabular', 'automl312')]
+    [string]$Profile   = 'main',
+    # 대상 Python 버전. 생략하면 프로필에서 결정한다.
+    [string]$PyVersion = '',
     # 대상 환경의 플랫폼. 64비트 윈도우 = win_amd64
     [string]$Platform  = 'win_amd64',
     # 임시 가상환경을 지우지 않고 남긴다 (디버깅용)
@@ -41,11 +45,28 @@ function Die([string]$m)  { Write-Host "`n실패: $m" -ForegroundColor Red; exit
 $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir) { $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $ScriptDir) { $ScriptDir = (Get-Location).Path }
-if (-not $OutDir)    { $OutDir    = Join-Path $ScriptDir 'wheelhouse' }
+$ProfileDir = $ScriptDir
+$ExpectedPy = '312'
+if ($Profile -eq 'tabular') {
+    $ProfileDir = Join-Path $ScriptDir 'profiles\tabular'
+} elseif ($Profile -eq 'automl312') {
+    $ProfileDir = Join-Path $ScriptDir 'profiles\automl312'
+}
+if (-not (Test-Path $ProfileDir)) { Die "프로필 폴더가 없다: $ProfileDir" }
+if (-not $PyVersion) { $PyVersion = $ExpectedPy }
+if ($PyVersion -ne $ExpectedPy) {
+    Die "$Profile 프로필은 Python $ExpectedPy 용이다. -PyVersion $PyVersion 과 맞지 않는다"
+}
+if (-not $OutDir) {
+    $folder = 'wheelhouse'
+    if ($Profile -ne 'main') { $folder = "wheelhouse-$Profile" }
+    $OutDir = Join-Path $ScriptDir $folder
+}
 Note "스크립트 폴더: $ScriptDir"
+Note "프로필: $Profile ($ProfileDir)"
 
 function Read-List([string]$name) {
-    $p = Join-Path $ScriptDir $name
+    $p = Join-Path $ProfileDir $name
     if (-not (Test-Path $p)) { Die "$name 을 찾을 수 없다 ($p)" }
     # -Encoding UTF8 명시 — PowerShell 5.1 은 BOM 없는 파일을 ANSI(한국어는 CP949)로 읽는다
     Get-Content $p -Encoding UTF8 |
@@ -55,12 +76,14 @@ function Read-List([string]$name) {
 
 # ---------------------------------------------------------------- 0. 목록
 $targets = @(Read-List 'packages.txt')
-$extras  = @(Read-List 'extra-deps.txt')
-$sdists  = @(Read-List 'sdist-only.txt')
+$extras  = @()
+$sdists  = @()
+if (Test-Path (Join-Path $ProfileDir 'extra-deps.txt')) { $extras = @(Read-List 'extra-deps.txt') }
+if (Test-Path (Join-Path $ProfileDir 'sdist-only.txt')) { $sdists = @(Read-List 'sdist-only.txt') }
 $binary  = @($targets) + @($extras)
 if ($binary.Count -eq 0) { Die 'packages.txt·extra-deps.txt 가 비어 있다' }
 
-Step "대상: Python $PyVersion / $Platform"
+Step "대상: $Profile / Python $PyVersion / $Platform"
 Note "wheel 내려받기 : $($binary -join ', ')"
 Note "sdist에서 빌드 : $($sdists -join ', ')"
 
@@ -93,18 +116,33 @@ if ($LASTEXITCODE -ne 0) { Warn 'pip 최신화 실패 — 기존 pip으로 계�
 try {
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
     if (-not (Test-Path $OutDir)) { Die "출력 폴더를 만들 수 없다: $OutDir" }
+    if (@(Get-ChildItem -Path $OutDir -Filter '*.whl').Count -gt 0) {
+        Die "$OutDir 에 기존 wheel이 있다. 다른 -OutDir 를 쓰거나 기존 폴더를 정리할 것"
+    }
 
     # ------------------------------------------------------------ 3. wheel 내려받기
     Step "wheel 내려받기 -> $OutDir"
-    Note '--no-deps 이므로 필요한 것은 목록에 모두 있어야 한다'
-    & $vpy -m pip download @binary `
-        -d $OutDir `
-        --no-deps `
-        --only-binary=:all: `
-        --platform $Platform `
-        --python-version $PyVersion `
-        --implementation cp `
-        --abi "cp$PyVersion"
+    if ($Profile -eq 'automl312') {
+        # 새 독립 환경은 기존 uv.lock이 없다. 모든 전이 의존성을 함께 받는다.
+        Note '독립 환경: pip이 전체 의존성을 풀어 모든 wheel을 받는다'
+        & $vpy -m pip download @targets `
+            -d $OutDir `
+            --only-binary=:all: `
+            --platform $Platform `
+            --python-version $PyVersion `
+            --implementation cp `
+            --abi "cp$PyVersion"
+    } else {
+        Note '--no-deps 이므로 필요한 것은 목록에 모두 있어야 한다'
+        & $vpy -m pip download @binary `
+            -d $OutDir `
+            --no-deps `
+            --only-binary=:all: `
+            --platform $Platform `
+            --python-version $PyVersion `
+            --implementation cp `
+            --abi "cp$PyVersion"
+    }
     if ($LASTEXITCODE -ne 0) { Die "pip download 실패 (종료코드 $LASTEXITCODE)" }
 
     # ------------------------------------------------------------ 4. sdist -> wheel
@@ -130,16 +168,26 @@ try {
 
     # 폐쇄망에서는 clone을 못 하므로, 설치에 필요한 것을 wheelhouse 안에 함께 담는다
     Step '설치 스크립트·목록 동봉'
-    foreach ($f in @('install.ps1', 'packages.txt', 'verify-imports.txt')) {
-        $src = Join-Path $ScriptDir $f
-        if (Test-Path $src) {
-            Copy-Item $src $OutDir -Force
-            Note $f
-        } else {
-            # 다운로드는 이미 끝났다 — 동봉 실패로 전체를 실패시키지 않는다
-            Warn "$f 이 없어 동봉하지 못했다 (설치는 수동 명령으로 가능)"
+    Copy-Item (Join-Path $ScriptDir 'install.ps1') $OutDir -Force
+    foreach ($f in @('packages.txt', 'verify-imports.txt')) {
+        $src = Join-Path $ProfileDir $f
+        if (-not (Test-Path $src)) { Die "설치 목록이 없다: $src" }
+        Copy-Item $src $OutDir -Force
+        Note $f
+    }
+    if ($Profile -eq 'automl312') {
+        Copy-Item (Join-Path $ProfileDir 'pyproject.toml') $OutDir -Force
+        Note 'pyproject.toml'
+    }
+    Set-Content (Join-Path $OutDir 'profile.txt') $Profile -Encoding ASCII
+    if ($Profile -ne 'automl312') {
+        $pins = @($binary | Where-Object { $_ -match '==' })
+        if ($pins.Count -gt 0) {
+            Set-Content (Join-Path $OutDir 'constraints.txt') $pins -Encoding ASCII
+            Note 'constraints.txt'
         }
     }
+    Note 'profile.txt · install.ps1'
 
     Step '결과'
     $sum = ($whl | Measure-Object Length -Sum).Sum / 1MB

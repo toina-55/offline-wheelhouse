@@ -1,0 +1,10 @@
+# 독립 Python 3.12 환경. pip download가 모든 전이 의존성을 함께 받는다.
+pycaret[notebook]==4.0.0a8
+catboost==1.2.10
+xgboost==3.4.1
+lightgbm==4.7.0
+optuna==5.0.0
+optuna-integration==5.0.0
+tabulate==0.10.0
+ipykernel==7.3.0
+nbconvert==7.17.1
