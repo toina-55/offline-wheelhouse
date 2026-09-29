@@ -51,7 +51,7 @@ PS> powershell -ExecutionPolicy Bypass -File .\download.ps1
 | `catboost` | 목표 | 95.6MB |
 | `kiwipiepy` | 목표 (cp39-abi3 — Python 3.9+ 공용) | 3.7MB |
 | `phik` | 목표 | 0.6MB |
-| `category-encoders` · `xlrd` · `umap-learn` | 목표 | 각 0.1MB |
+| `category-encoders` · `xlrd` · `umap-learn` · `crepes` · `metric-learn` | 목표 | 각 0.1MB 미만 |
 | `plotly` | catboost 의존 | 9.2MB |
 | `graphviz` · `pynndescent` | 각각 catboost · umap-learn 의존 | 0.1MB 미만 |
 | **`kiwipiepy_model`** | kiwipiepy 의존 · **sdist만 있어 빌드 필요** | **88MB** |

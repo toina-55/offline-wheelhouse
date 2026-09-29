@@ -7,3 +7,5 @@ xlrd
 phik
 kiwipiepy
 umap-learn
+crepes              # conformal 예측 — "이웃이 갈리면 검토 필요"를 보정된 커버리지로
+metric-learn        # LMNN·ITML·LFDA. sklearn NCA로 안 되는 것만

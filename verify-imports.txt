@@ -7,3 +7,5 @@ xlrd
 phik
 kiwipiepy
 umap
+crepes
+metric_learn
