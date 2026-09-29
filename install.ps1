@@ -18,7 +18,7 @@
 [CmdletBinding()]
 param(
     # 옮겨온 wheelhouse 폴더. 생략하면 이 스크립트가 있는 폴더를 쓴다
-    [string]$Wheelhouse = $PSScriptRoot,
+    [string]$Wheelhouse = '',
     # 설치 대상 uv 프로젝트 (pyproject.toml 이 있는 폴더)
     [string]$EnvPath = "$HOME\code\local-llm-setup\envs\main",
     # 해시 확인을 건너뛴다 (권장하지 않음)
@@ -29,6 +29,13 @@ $ErrorActionPreference = 'Stop'
 function Step([string]$m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 function Note([string]$m) { Write-Host "    $m" -ForegroundColor DarkGray }
 function Warn([string]$m) { Write-Host "    $m" -ForegroundColor Yellow }
+
+# 🔴 $PSScriptRoot 는 실행 방식에 따라 빈 값일 수 있다(콘솔에 붙여넣기·dot-sourcing 등).
+#    그때 Join-Path 가 "Path 매개 변수가 빈 문자열" 오류를 낸다. 단계적으로 해석한다.
+$ScriptDir = $PSScriptRoot
+if (-not $ScriptDir)  { $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $ScriptDir)  { $ScriptDir  = (Get-Location).Path }
+if (-not $Wheelhouse) { $Wheelhouse = $ScriptDir }
 
 function Read-List([string]$path) {
     if (-not (Test-Path $path)) { throw "$path 를 찾을 수 없다" }
@@ -88,7 +95,7 @@ if (Test-Path $lock) { Note "$lock.bak" }
 
 # ---------------------------------------------------------------- 3. 설치
 $pkgList = Join-Path $Wheelhouse 'packages.txt'
-if (-not (Test-Path $pkgList)) { $pkgList = Join-Path $PSScriptRoot 'packages.txt' }
+if (-not (Test-Path $pkgList)) { $pkgList = Join-Path $ScriptDir 'packages.txt' }
 $targets = @(Read-List $pkgList)
 
 try {
@@ -101,7 +108,7 @@ try {
     # ------------------------------------------------------------ 4. import 확인
     Step 'import 확인'
     $impFile = Join-Path $Wheelhouse 'verify-imports.txt'
-    if (-not (Test-Path $impFile)) { $impFile = Join-Path $PSScriptRoot 'verify-imports.txt' }
+    if (-not (Test-Path $impFile)) { $impFile = Join-Path $ScriptDir 'verify-imports.txt' }
     $mods = @(Read-List $impFile)
     $code = 'import ' + ($mods -join ', ') + '; print("import OK")'
     & uv run python -c $code

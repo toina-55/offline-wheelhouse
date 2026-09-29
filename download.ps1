@@ -12,8 +12,8 @@
 #>
 [CmdletBinding()]
 param(
-    # 결과 wheel을 모을 폴더
-    [string]$OutDir    = (Join-Path $PSScriptRoot 'wheelhouse'),
+    # 결과 wheel을 모을 폴더. 생략하면 <스크립트 폴더>\wheelhouse
+    [string]$OutDir    = '',
     # 대상 환경의 Python 버전. envs\main = 312, envs\automl = 311
     [string]$PyVersion = '312',
     # 대상 환경의 플랫폼. 64비트 윈도우 = win_amd64
@@ -26,8 +26,17 @@ $ErrorActionPreference = 'Stop'
 function Step([string]$m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 function Note([string]$m) { Write-Host "    $m" -ForegroundColor DarkGray }
 
+# 🔴 $PSScriptRoot 는 실행 방식에 따라 빈 값일 수 있다(콘솔에 붙여넣기·dot-sourcing 등).
+#    param 기본값에서 Join-Path $PSScriptRoot 를 쓰면 그때 "Path 매개 변수가 빈 문자열"
+#    오류가 난다. 그래서 여기서 단계적으로 해석한다.
+$ScriptDir = $PSScriptRoot
+if (-not $ScriptDir) { $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $ScriptDir) { $ScriptDir = (Get-Location).Path }
+if (-not $OutDir)    { $OutDir    = Join-Path $ScriptDir 'wheelhouse' }
+Note "스크립트 폴더: $ScriptDir"
+
 function Read-List([string]$name) {
-    $p = Join-Path $PSScriptRoot $name
+    $p = Join-Path $ScriptDir $name
     if (-not (Test-Path $p)) { throw "$name 을 찾을 수 없다 ($p)" }
     # -Encoding UTF8 을 명시한다 — PowerShell 5.1 은 BOM 없는 파일을 ANSI(한국어는 CP949)로
     # 읽어서 한글 주석이 깨지고, 깨진 바이트가 파싱을 망친다
@@ -61,7 +70,7 @@ Note $py
 
 # ---------------------------------------------------------------- 2. 임시 가상환경
 Step '임시 가상환경 생성 (이 노트북에 영구 설치 없음)'
-$venv = Join-Path $PSScriptRoot '.venv-dl'
+$venv = Join-Path $ScriptDir '.venv-dl'
 if (Test-Path $venv) { Remove-Item $venv -Recurse -Force }
 & $py -m venv $venv
 $vpy = Join-Path $venv 'Scripts\python.exe'
@@ -107,7 +116,7 @@ try {
     # 폐쇄망에서는 clone을 못 하므로, 설치에 필요한 것을 wheelhouse 안에 함께 담는다
     Step '설치 스크립트·목록 동봉'
     foreach ($f in @('install.ps1', 'packages.txt', 'verify-imports.txt')) {
-        Copy-Item (Join-Path $PSScriptRoot $f) $OutDir -Force
+        Copy-Item (Join-Path $ScriptDir $f) $OutDir -Force
         Note $f
     }
 
