@@ -1,0 +1,9 @@
+# 🔴 .ps1 은 CRLF + UTF-8 BOM 으로 유지한다.
+# 윈도우 기본 PowerShell 5.1 은 BOM 없는 .ps1 을 ANSI(한국어 윈도우 = CP949)로 읽어서
+# 한글이 깨지고, 깨진 바이트를 파서가 따옴표로 인식해
+# "문자열에 종결자 '가 없습니다" 같은 엉뚱한 구문 오류를 낸다.
+# BOM 자체는 파일 내용이라 git 이 건드리지 않지만, 줄바꿈은 여기서 고정해 둔다.
+*.ps1 text eol=crlf
+
+*.txt text eol=lf
+*.md  text eol=lf

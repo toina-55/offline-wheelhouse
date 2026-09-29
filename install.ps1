@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   옮겨온 wheelhouse를 폐쇄망 uv 프로젝트에 설치한다.
 
@@ -32,7 +32,8 @@ function Warn([string]$m) { Write-Host "    $m" -ForegroundColor Yellow }
 
 function Read-List([string]$path) {
     if (-not (Test-Path $path)) { throw "$path 를 찾을 수 없다" }
-    Get-Content $path |
+    # -Encoding UTF8 을 명시한다 — PowerShell 5.1 은 BOM 없는 파일을 ANSI(한국어는 CP949)로 읽는다
+    Get-Content $path -Encoding UTF8 |
         ForEach-Object { ($_ -split '#')[0].Trim() } |
         Where-Object   { $_ -ne '' }
 }
@@ -88,7 +89,7 @@ if (Test-Path $lock) { Note "$lock.bak" }
 # ---------------------------------------------------------------- 3. 설치
 $pkgList = Join-Path $Wheelhouse 'packages.txt'
 if (-not (Test-Path $pkgList)) { $pkgList = Join-Path $PSScriptRoot 'packages.txt' }
-$targets = Read-List $pkgList
+$targets = @(Read-List $pkgList)
 
 try {
     Step "uv add --offline ($($targets -join ', '))"
@@ -101,7 +102,7 @@ try {
     Step 'import 확인'
     $impFile = Join-Path $Wheelhouse 'verify-imports.txt'
     if (-not (Test-Path $impFile)) { $impFile = Join-Path $PSScriptRoot 'verify-imports.txt' }
-    $mods = Read-List $impFile
+    $mods = @(Read-List $impFile)
     $code = 'import ' + ($mods -join ', ') + '; print("import OK")'
     & uv run python -c $code
     if ($LASTEXITCODE -ne 0) { throw "import 실패" }

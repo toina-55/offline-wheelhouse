@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   폐쇄망으로 옮길 Python wheel을 내려받는다.
 
@@ -29,15 +29,17 @@ function Note([string]$m) { Write-Host "    $m" -ForegroundColor DarkGray }
 function Read-List([string]$name) {
     $p = Join-Path $PSScriptRoot $name
     if (-not (Test-Path $p)) { throw "$name 을 찾을 수 없다 ($p)" }
-    Get-Content $p |
+    # -Encoding UTF8 을 명시한다 — PowerShell 5.1 은 BOM 없는 파일을 ANSI(한국어는 CP949)로
+    # 읽어서 한글 주석이 깨지고, 깨진 바이트가 파싱을 망친다
+    Get-Content $p -Encoding UTF8 |
         ForEach-Object { ($_ -split '#')[0].Trim() } |
         Where-Object   { $_ -ne '' }
 }
 
 # ---------------------------------------------------------------- 0. 목록
-$targets = Read-List 'packages.txt'
-$extras  = Read-List 'extra-deps.txt'
-$sdists  = Read-List 'sdist-only.txt'
+$targets = @(Read-List 'packages.txt')
+$extras  = @(Read-List 'extra-deps.txt')
+$sdists  = @(Read-List 'sdist-only.txt')
 $binary  = @($targets) + @($extras)
 
 Step "대상: Python $PyVersion / $Platform"

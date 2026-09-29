@@ -33,6 +33,25 @@ PS> .\install.ps1 -EnvPath D:\somewhere\envs\main
 PS> powershell -ExecutionPolicy Bypass -File .\download.ps1
 ```
 
+### 🔴 *"문자열에 종결자 '가 없습니다"* 오류가 나면
+
+**인코딩 문제이고 스크립트 문법 문제가 아니다.** 윈도우 기본 PowerShell 5.1은 **BOM 없는 `.ps1`을 ANSI(한국어 윈도우 = CP949)로 읽는다.** 이 스크립트에는 한글 주석이 많아서, UTF-8 바이트가 CP949로 잘못 해독되면 생긴 쓰레기 바이트를 파서가 따옴표로 인식해 **엉뚱한 구문 오류**를 낸다.
+
+이 저장소의 `.ps1`은 **UTF-8 BOM + CRLF**로 커밋돼 있어 정상이라면 나지 않는다. 그래도 났다면:
+
+```powershell
+# 1) BOM 확인 — EF BB BF 로 시작해야 한다
+PS> Format-Hex .\download.ps1 -Count 3
+
+# 2) 없으면 다시 저장
+PS> $t = Get-Content .\download.ps1 -Raw -Encoding UTF8
+PS> [System.IO.File]::WriteAllText("$PWD\download.ps1", $t, (New-Object System.Text.UTF8Encoding $true))
+```
+
+편집기로 열어 고쳤다면 **"UTF-8 with BOM"으로 저장**해야 한다(VS Code: 하단 인코딩 → `Save with Encoding` → `UTF-8 with BOM`).
+
+그래도 막히면 아래 **"스크립트 없이 손으로 하기"**를 쓰면 된다 — 한글이 없는 명령뿐이라 인코딩과 무관하다.
+
 ## 무엇을 받는가
 
 목록은 세 파일로 나뉘어 있다. **대상 환경에 이미 있는 패키지는 일부러 제외**했다 — `--no-deps`로 받기 때문에 목록에 없으면 받지 않는다.
@@ -143,7 +162,9 @@ PS> uv sync --offline
 | ✅ | **`interpret-core`의 순수 Python wheel 안에 `libebm_win_x64.dll`(1.49MB)이 들어 있는 것 확인** — EBM 네이티브 부스터가 Windows에서 동작한다 |
 | ✅ | **의존성 완전성 확인** — wheel **19종 전부**의 `Requires-Dist`를 대상 `uv.lock`과 교차 대조해 **빠진 필수 의존성 0건** |
 | ✅ | 두 스크립트에 **PowerShell 7 전용 문법이 없는 것** 확인 — 윈도우 기본 PowerShell 5.1에서 동작하는 구문만 씀(`??`·`?.`·`&&` 등 미사용) |
-| 🔴 | **`download.ps1`·`install.ps1`은 Windows에서 실행 검증하지 않았다** (작성 환경에 PowerShell 없음). 막히면 위 "손으로 하기"를 쓸 것 — 그쪽 명령은 위 실측에 쓴 것과 같다 |
+| ✅ | **`.ps1`을 UTF-8 BOM + CRLF로 저장**(2026-09-29 수정) — BOM이 없어 실제로 *"문자열에 종결자 '가 없습니다"* 오류가 났다. 원인은 PowerShell 5.1의 ANSI 해독. `.gitattributes`로 줄바꿈 고정, 스크립트의 `Get-Content`에도 `-Encoding UTF8` 명시 |
+| ✅ | 변환 후 두 파일의 **따옴표 균형 0건 불균형 · 한글 정상 해독** 재확인 |
+| 🔴 | **`download.ps1`·`install.ps1`의 실행 자체는 Windows에서 검증하지 않았다** (작성 환경에 PowerShell 없음). 막히면 위 "손으로 하기"를 쓸 것 — 그쪽 명령은 위 실측에 쓴 것과 같고 **한글이 없어 인코딩과 무관하다** |
 
 ## 새 패키지를 추가할 때
 
