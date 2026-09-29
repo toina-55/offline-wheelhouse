@@ -1,0 +1,9 @@
+# 설치 후 import 확인용 **모듈명** (pip 패키지명과 다른 것이 있어서 따로 둔다)
+# category-encoders → category_encoders · umap-learn → umap
+
+catboost
+category_encoders
+xlrd
+phik
+kiwipiepy
+umap

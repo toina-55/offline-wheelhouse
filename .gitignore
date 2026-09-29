@@ -1,0 +1,11 @@
+# 내려받은 wheel — 저장소에 담지 않는다 (용량·라이선스)
+wheelhouse/
+*.whl
+*.tar.gz
+
+# download.ps1 이 쓰는 임시 가상환경
+.venv-dl/
+.venv/
+
+# 무결성 확인 산출물
+after.csv

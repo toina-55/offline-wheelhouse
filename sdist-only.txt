@@ -1,0 +1,9 @@
+# PyPI에 wheel이 없고 sdist(.tar.gz)만 있는 패키지.
+# `pip download --only-binary=:all:` 로는 받을 수 없어서
+# `pip wheel` 로 **온라인에서 미리 빌드**해 wheel로 만들어 옮긴다.
+#
+# 🔴 순수 Python·데이터 패키지만 여기 넣는다.
+#    C 확장이 있는 sdist는 빌드 결과가 빌드한 OS에 묶이므로
+#    Windows에서 빌드해야 Windows에서 쓸 수 있다.
+
+kiwipiepy_model     # kiwipiepy 형태소 모델 본체. sdist 84MB → py3-none-any wheel 88MB

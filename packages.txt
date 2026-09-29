@@ -1,0 +1,9 @@
+# 설치 목표 패키지 — install.ps1 이 `uv add` 에 넘기는 목록
+# 전이 의존성은 여기 쓰지 않는다 (extra-deps.txt / sdist-only.txt)
+
+catboost
+category-encoders
+xlrd
+phik
+kiwipiepy
+umap-learn

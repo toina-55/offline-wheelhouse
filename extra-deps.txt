@@ -1,0 +1,11 @@
+# packages.txt 의 전이 의존성 중 **대상 환경에 아직 없는 것만**.
+# 내려받기만 하고 `uv add` 에는 넘기지 않는다 (의존성이라 자동으로 끌려간다).
+#
+# 대상 환경에 이미 있어서 제외한 것:
+#   numpy scipy pandas matplotlib scikit-learn statsmodels patsy
+#   numba llvmlite joblib six tqdm
+# → 대상 환경이 바뀌면 이 목록을 다시 점검할 것 (README §목록을 고칠 때)
+
+plotly          # catboost 필수
+graphviz        # catboost 필수 (Python 바인딩, 실행 파일 아님)
+pynndescent     # umap-learn 필수
