@@ -106,7 +106,7 @@ PyCaret 4 예제는 `from pycaret.tasks import ClassificationExperiment`로 시�
 
 > `tabulate`는 용량이 0.04MB인데 없으면 **`df.to_markdown()` 자체가 동작하지 않는다.** 분석 결과를 마크다운 표로 옮길 일이 있으면 필수.
 
-## 🔴 알아둘 것 다섯
+## 🔴 알아둘 것 일곱
 
 **1. Python 버전·플랫폼이 정확히 맞아야 한다.** wheel은 `cp312`·`win_amd64` 같은 태그로 묶여 있다. 세 프로필 모두 **Python 3.12 / 64비트 Windows**를 대상으로 한다. 스크립트는 프로필과 다른 `-PyVersion`을 거부한다.
 
@@ -114,7 +114,14 @@ PyCaret 4 예제는 `from pycaret.tasks import ClassificationExperiment`로 시�
 PS> .\download.ps1 -Profile automl312 -OutDir D:\wheelhouse-automl312
 ```
 
-받는 머신의 Python 버전은 **무관하다** — 대상 버전의 wheel을 고르도록 지정하므로. 단 `kiwipiepy_model`처럼 wheel이 없는 sdist를 빌드하는 `main` 프로필은 순수 Python·데이터 패키지라는 전제가 있다.
+받는 머신의 Python **버전**은 무관하다 — 대상 버전의 wheel을 고르도록 지정하므로. 단 `kiwipiepy_model`처럼 wheel이 없는 sdist를 빌드하는 `main` 프로필은 순수 Python·데이터 패키지라는 전제가 있다.
+
+> 🔴 **그러나 받는 머신의 OS는 무관하지 않다 — 반드시 Windows에서 받는다.**
+> `pip download --platform win_amd64`는 **wheel 태그만** 대상 기준으로 고른다. `sys_platform == "win32"` 같은 **환경 마커는 실행 중인 호스트 OS 기준으로 평가한다.** 그래서 Windows가 아닌 곳에서 받으면
+> - Windows 전용 의존성이 **빠진다** — 실측: `tzdata`(pandas가 win32에서 요구)·`colorama`(ipython·colorlog)
+> - 그 OS 전용 패키지가 **섞여 들어온다** — 실측: macOS에서 받으면 `appnope`
+>
+> 전체 의존성을 푸는 `automl312` 프로필이 특히 직접 영향을 받는다(실측: macOS에서 받은 번들은 `tzdata` 부재로 해석 자체가 실패). `--no-deps`로 도는 `main`·`tabular`는 목록이 고정이라 영향이 작지만, 그래도 Windows에서 받는 것을 전제로 한다.
 
 **2. 기존 환경용 `main`·`tabular`는 `pip download --no-deps`로 돈다.** 대상 환경에 이미 있는 것을 다시 받지 않으려는 의도다. 그래서 **대상 환경이 바뀌면 `extra-deps.txt`를 다시 점검해야 한다.** 새 환경용 `automl312`는 전체 의존성을 받으므로 기존 캐시에 의존하지 않는다.
 
@@ -124,7 +131,17 @@ PS> .\download.ps1 -Profile automl312 -OutDir D:\wheelhouse-automl312
 
 > 🔴 **단 `uv add --offline`은 프로젝트 전체를 다시 해석한다.** 새 패키지는 `--find-links`에서, **기존 패키지는 uv 캐시에서** 가져오는데, 캐시에 없는 버전이 하나라도 있으면 거기서 멈춘다(실측: 캐시에 없는 `scipy`에서 실패). 그래서 **기존 환경용 프로필은 대상 머신의 uv 캐시를 지우지 않는 것이 전제**다.
 
-**5. 메타패키지에 `extras`가 걸려 있는지 본다.** `Requires-Dist`에 `pkg[extra1,extra2]==x.y` 형태가 있으면, 그 extras의 의존성까지 전부 딸려온다. 실제로 `interpret`(메타)가 `interpret-core[aplr,dash,debug,notebook,plotly,sensitivity,shap]`을 요구해 **dash·dash-cytoscape·flask·gevent·aplr·SALib**를 끌고 오려 했다. 그래서 이 저장소는 **`interpret-core`를 직접** 쓴다 — EBM은 core만으로 동작한다(실측 확인).
+**5. `automl312`는 해석(lock)을 온라인에서 끝내 동봉한다.** `download.ps1`이 wheelhouse만으로 `uv lock --offline --no-index --find-links`를 돌려 `uv.lock`을 함께 담고, `install.ps1`은 그것을 복사해 `uv sync --frozen`으로 설치만 한다. **pip과 uv는 해석기가 달라** 폐쇄망에서 uv가 다시 풀면 pip이 받은 것과 어긋날 수 있다 — 그 실패를 **고칠 수 있는 곳(온라인)에서** 드러나게 하는 것이 요지다. lock 생성이 실패해도 다운로드는 유지되지만, 경고가 나오면 **반입 전에 해결해야 한다.**
+
+**6. `environments`에 `implementation_name`까지 고정한다.** uv의 universal 해석은 `sys_platform`을 고정해도 **PyPy 분기를 함께 만족시키려 한다.** 실측: `pyzmq`의 `cffi; implementation_name == "pypy"` 때문에 오프라인 해석이 실패했다(pip은 CPython 호스트에서 그 마커가 false라 `cffi`를 받지 않는다). **`sys_platform` 문제가 아니라 Windows에서도 똑같이 난다.**
+
+```toml
+environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64' and implementation_name == 'cpython'",
+]
+```
+
+**7. 메타패키지에 `extras`가 걸려 있는지 본다.** `Requires-Dist`에 `pkg[extra1,extra2]==x.y` 형태가 있으면, 그 extras의 의존성까지 전부 딸려온다. 실제로 `interpret`(메타)가 `interpret-core[aplr,dash,debug,notebook,plotly,sensitivity,shap]`을 요구해 **dash·dash-cytoscape·flask·gevent·aplr·SALib**를 끌고 오려 했다. 그래서 이 저장소는 **`interpret-core`를 직접** 쓴다 — EBM은 core만으로 동작한다(실측 확인).
 
 ## 스크립트 없이 손으로 하기 (`main` 전용)
 
@@ -201,6 +218,9 @@ PS> uv sync --offline
 | ✅ | **`download.ps1` 전체 실행 성공** — wheel 18개 · 224.4MB, Windows 태그 정확(`catboost-cp312-win_amd64`·`kiwipiepy-cp39-abi3-win_amd64`·`phik-cp312-win_amd64`), sdist 빌드, 해시 기록, `install.ps1` 동봉, 임시 가상환경 삭제까지 |
 | ✅ | **`install.ps1` 전체 실행 성공** — 무결성 확인(8개 일치) → 백업 생성 → `uv add --offline` 13개 설치 → `import OK` → 회귀 확인. **회귀 실패 분기도 의도대로 동작**(복구 명령 안내) |
 | ✅ | 설치 후 **맨 `uv run`(--no-sync 없이)으로 6종 전부 생존** · `pyproject.toml` 기록 · `.bak` 2개 생성 확인 |
+| ✅ | **`automl312` 프로필 실측**(2026-09-30 검토) — `pip download` 전체 해석 88종 259MB 성공. 🔴 그 번들을 `uv lock`에 넣었더니 **해석 실패** — 원인 둘을 찾아 고쳤다: ① `environments`에 `implementation_name` 누락(`pyzmq`→`cffi{pypy}`) ② macOS 호스트라 `tzdata`·`colorama` 누락. ①을 고치고 ②를 Windows 상태로 보정하니 **`Resolved 88 packages`** |
+| ✅ | **`uv.lock` 동봉 로직 실측** — `download.ps1`이 wheelhouse만으로 lock을 만들어 담고, 실패 시 다운로드는 유지하며 경고. `install.ps1`은 동봉 lock을 복사해 `uv sync --frozen` |
+| ✅ | **`tabular` 프로필 교차 검증** — 6종 모두 `envs/tabular/uv.lock`에 실제로 없고, 빠진 전이 의존성 0건 |
 | 🟡 | 실행 검증은 **macOS의 PowerShell 7**에서 했다(Windows·PowerShell 5.1 아님). `Scripts\python.exe` 경로만 macOS용으로 바꿔 돌렸고 나머지는 그대로다. **5.1 고유 동작**(ANSI 해독·네이티브 인자 인용부호·stderr 처리)은 이미 그 특성에 맞춰 고쳐 두었다 |
 
 ## 새 패키지를 추가할 때

@@ -41,9 +41,10 @@ if (-not $ScriptDir)  { $ScriptDir  = (Get-Location).Path }
 if (-not $Wheelhouse) { $Wheelhouse = $ScriptDir }
 
 # 복구용 상태
-$script:pyproj = $null
-$script:lock   = $null
-$script:pushed = $false
+$script:pyproj   = $null
+$script:lock     = $null
+$script:pushed   = $false
+$script:haveLock = $false
 
 function Restore-Backup {
     if ($script:pyproj -and (Test-Path "$($script:pyproj).bak")) {
@@ -155,6 +156,16 @@ if ($Profile -eq 'automl312') {
     $newProject = Join-Path $EnvPath 'pyproject.toml'
     if (-not (Test-Path $newProject)) { Copy-Item $template $newProject -Force }
     if (-not (Test-Path $newProject)) { Die "프로젝트 설정을 복사하지 못했다: $newProject" }
+    # 동봉된 uv.lock 이 있으면 그대로 쓴다 — 폐쇄망에서 재해석하지 않는다
+    $bundledLock = Join-Path $Wheelhouse 'uv.lock'
+    $script:haveLock = $false
+    if (Test-Path $bundledLock) {
+        Copy-Item $bundledLock (Join-Path $EnvPath 'uv.lock') -Force
+        $script:haveLock = $true
+        Note 'uv.lock 동봉본 사용 (재해석 없음)'
+    } else {
+        Warn 'uv.lock 이 동봉되지 않았다 — uv 가 여기서 다시 해석한다(실패 가능)'
+    }
     $EnvPath = (Resolve-Path $EnvPath).Path
 } else {
     Step '백업'
@@ -186,9 +197,15 @@ if ((Get-Location).Path -ne $EnvPath) { Die "작업 폴더를 옮기지 못했�
 $script:pushed = $true
 
 if ($Profile -eq 'automl312') {
-    Step 'uv sync --offline (독립 Python 3.12 환경)'
-    Note '모든 의존성을 wheelhouse에서만 해석·설치한다'
-    & uv sync --offline --no-index --find-links $Wheelhouse
+    if ($script:haveLock) {
+        Step 'uv sync --frozen (동봉 lock 그대로 설치)'
+        Note '해석은 온라인에서 끝났다 — 여기서는 설치만 한다'
+        & uv sync --offline --frozen --no-index --find-links $Wheelhouse
+    } else {
+        Step 'uv sync --offline (독립 Python 3.12 환경)'
+        Note '모든 의존성을 wheelhouse에서만 해석·설치한다'
+        & uv sync --offline --no-index --find-links $Wheelhouse
+    }
     if ($LASTEXITCODE -ne 0) { Die "uv sync 실패 (종료코드 $LASTEXITCODE)" }
 } else {
     Step "uv add --offline ($($targets -join ', '))"

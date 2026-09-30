@@ -178,6 +178,34 @@ try {
     if ($Profile -eq 'automl312') {
         Copy-Item (Join-Path $ProfileDir 'pyproject.toml') $OutDir -Force
         Note 'pyproject.toml'
+
+        # 🔑 해석(lock)을 여기서 끝낸다.
+        #    pip 과 uv 는 해석기가 달라, 폐쇄망에서 uv 가 다시 풀면 pip 이 받은 것과
+        #    어긋나 실패할 수 있다. 지금 wheelhouse 만으로 lock 을 만들어 동봉하면
+        #    설치 쪽은 "이미 정해진 것을 설치"만 하게 된다.
+        if (Get-Command uv -CommandType Application -ErrorAction SilentlyContinue) {
+            Step 'uv.lock 생성 (wheelhouse 만으로 해석)'
+            $lockDir = Join-Path $ScriptDir '.lockgen'
+            if (Test-Path $lockDir) { Remove-Item $lockDir -Recurse -Force }
+            New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
+            Copy-Item (Join-Path $ProfileDir 'pyproject.toml') $lockDir -Force
+            Push-Location $lockDir
+            & uv lock --offline --no-index --find-links $OutDir
+            $lockCode = $LASTEXITCODE
+            Pop-Location -ErrorAction SilentlyContinue
+            $lockFile = Join-Path $lockDir 'uv.lock'
+            if ($lockCode -eq 0 -and (Test-Path $lockFile)) {
+                Copy-Item $lockFile $OutDir -Force
+                Note 'uv.lock (동봉 — 폐쇄망에서 재해석 불필요)'
+            } else {
+                # 다운로드는 끝났다. lock 실패로 전체를 실패시키지 않는다.
+                Warn "uv lock 실패 (종료코드 $lockCode) — uv.lock 없이 진행한다."
+                Warn '폐쇄망에서 uv 가 다시 해석하며 실패할 수 있다. 위 오류를 먼저 해결할 것.'
+            }
+            Remove-Item $lockDir -Recurse -Force -ErrorAction SilentlyContinue
+        } else {
+            Warn 'uv 가 없어 uv.lock 을 만들지 못했다 — 폐쇄망에서 재해석을 시도하게 된다'
+        }
     }
     Set-Content (Join-Path $OutDir 'profile.txt') $Profile -Encoding ASCII
     if ($Profile -ne 'automl312') {
