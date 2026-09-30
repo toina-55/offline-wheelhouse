@@ -27,11 +27,106 @@ PS> .\install.ps1           # 새 envs\automl312 생성 (PyCaret 4 / Python 3.12
 
 **`download.ps1`이 설치 스크립트·패키지 목록·프로필 정보·해시를 각 wheelhouse 안에 함께 담는다.** `automl312`에는 새 프로젝트의 `pyproject.toml`과 전체 전이 의존성 wheel도 담는다.
 
-설치 대상 경로가 다르면:
+## 폐쇄망 설치 절차 — 프로필마다 따로 돌린다
+
+🔴 **한 번에 끝나지 않는다.** wheelhouse가 프로필별로 따로 있고, `install.ps1`은 **한 번에 하나**만 처리한다.
+
+| 들고 간 폴더 | `profile.txt` | 설치 대상 | 방식 |
+| --- | --- | --- | --- |
+| `wheelhouse\` | `main` | `envs\main` | `uv add` — 기존 환경에 추가 |
+| `wheelhouse-tabular\` | `tabular` | `envs\tabular` | `uv add` — 기존 환경에 추가 |
+| `wheelhouse-automl312\` | `automl312` | **`envs\automl312`** (없으면 새로 만든다) | `uv sync` — 독립 환경 |
+
+**`envs\automl` (Python 3.11 / PyCaret 3.3.2)은 어느 경우에도 건드리지 않는다.**
+
+### 0. 설치 대상 경로 확인
+
+`install.ps1`은 `$HOME\code\local-llm-setup\envs\<프로필>`을 기본값으로 쓴다. 다르면 `-EnvPath`로 지정한다.
 
 ```powershell
-PS> .\install.ps1 -EnvPath D:\somewhere\envs\main
+PS> Test-Path "$HOME\code\local-llm-setup\envs\main\pyproject.toml"      # True 여야 한다
+PS> Test-Path "$HOME\code\local-llm-setup\envs\tabular\pyproject.toml"   # True 여야 한다
 ```
+
+`False`면:
+
+```powershell
+PS> .\install.ps1 -EnvPath D:\실제경로\local-llm-setup\envs\main
+```
+
+> `automl312`는 대상 폴더가 **없어도 된다**(스크립트가 만든다). 단 부모인 `envs` 폴더는 있어야 한다.
+> 🔑 **`-EnvPath`를 틀리게 줘도 엉뚱한 환경을 덮어쓰지 않는다** — `profile.txt`로 대상을 정하고 그 폴더 `pyproject.toml`의 `name = "field-<프로필>"`을 대조해, 맞지 않으면 중단한다.
+
+### 1. 설치 전 백업
+
+`install.ps1`도 `.bak`을 만들지만 **설치하는 프로필 하나의 `pyproject.toml`·`uv.lock`만**이다. 전체를 미리 떠 둔다.
+
+```powershell
+PS> $stamp = Get-Date -Format 'yyyyMMdd-HHmm'
+PS> $bk = "$HOME\env-backup-$stamp"; $envs = "$HOME\code\local-llm-setup\envs"
+PS> New-Item -ItemType Directory -Force $bk | Out-Null
+PS> Get-ChildItem $envs -Directory | ForEach-Object {
+      $d = Join-Path $bk $_.Name; New-Item -ItemType Directory -Force $d | Out-Null
+      foreach ($f in @('pyproject.toml','uv.lock')) {
+          $s = Join-Path $_.FullName $f; if (Test-Path $s) { Copy-Item $s $d }
+      }
+      if (Test-Path (Join-Path $_.FullName '.venv')) {
+          Push-Location $_.FullName
+          uv pip freeze | Out-File (Join-Path $bk "$($_.Name)-freeze.txt") -Encoding UTF8
+          Pop-Location
+      }
+  }
+```
+
+**이게 실제 복구 경로다.** `pyproject.toml`·`uv.lock`을 되돌리고 `uv sync --offline`을 돌리면 **uv 캐시에서** 원래 상태가 재구성된다. `freeze.txt`는 나중에 *"무엇이 바뀌었나"*를 대조하는 용도다.
+
+🔴 **`uv cache clean`을 절대 실행하지 않는다.** 폐쇄망에서 환경 복구는 **오직 캐시에서만** 가능하다.
+
+### 2. (선택) venv 통째로 백업
+
+여유 공간이 있으면 보험으로 뜬다. 먼저 크기를 잰다.
+
+```powershell
+PS> "{0:N1} GB" -f ((Get-ChildItem $envs -Recurse -File -Force | Measure-Object Length -Sum).Sum / 1GB)
+PS> Get-PSDrive C | Select-Object @{n='Free(GB)';e={[math]::Round($_.Free/1GB,1)}}
+PS> tar -cf "$bk\envs-full.tar" -C "$HOME\code\local-llm-setup" envs
+```
+
+🔴 **탐색기 복붙·`Copy-Item -Recurse`를 쓰지 않는다** — `site-packages` 경로가 깊어 **긴 경로에서 실패한다.** `tar`(윈도우 10 1803+ 내장) 또는 `robocopy $envs "$bk\envs" /E`를 쓴다.
+
+⚠️ **복사본은 원래 경로로만 되돌릴 수 있다.** venv 안에는 절대 경로가 박혀 있다 — `pyvenv.cfg`의 `home`, `Scripts\*.exe` 런처, `activate` 스크립트. 그래서 **다른 경로에서 그대로 실행하면 안 되고**, 복구할 때 원래 위치에 덮어써야 한다. 백업 용도로는 문제없다.
+
+⚠️ **표시 용량보다 커질 수 있다.** uv는 캐시에서 하드링크로 venv를 만들기 때문에, 복사하면 링크가 풀려 실체 복사본이 된다.
+
+### 3. 위험이 낮은 순서로 설치
+
+```powershell
+PS> cd C:\transfer\wheelhouse-automl312 ; .\install.ps1   # ① 새 폴더만 만든다 — 기존 영향 0
+PS> cd C:\transfer\wheelhouse-tabular   ; .\install.ps1   # ② 추가 4종
+PS> cd C:\transfer\wheelhouse           ; .\install.ps1   # ③ 추가 12종, 가장 많이 쓰는 환경
+```
+
+**`automl312`를 먼저** 하는 이유는 실패해도 잃을 것이 없어 절차 자체를 검증할 수 있기 때문이다.
+
+### 4. 설치 후 확인 · 되돌리기
+
+성공하면 스크립트가 초록색으로 끝난다. 직접 더 보려면:
+
+```powershell
+PS> cd $HOME\code\local-llm-setup\envs\main
+PS> uv run python -c "import torch; print(torch.cuda.is_available())"     # True 여야 한다
+PS> uv run jupyter nbconvert --to notebook --execute --output-dir $env:TEMP ..\..\cookbook\03-ml-supervised-unsupervised.ipynb
+```
+
+🔴 **`torch.cuda.is_available()`가 `False`로 바뀌면** lock 재해석이 CPU 빌드를 끌어온 것이다. 즉시 되돌린다.
+
+```powershell
+PS> Copy-Item pyproject.toml.bak pyproject.toml -Force
+PS> Copy-Item uv.lock.bak       uv.lock       -Force
+PS> uv sync --offline
+```
+
+## 스크립트 실행이 막힐 때
 
 `PowerShell 실행 정책`에 막히면:
 
